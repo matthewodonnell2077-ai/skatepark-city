@@ -243,7 +243,7 @@ body.tablet #tPause,body.tablet #tChat,body.tablet #tMap{transform:none}
             <button id="btnEdit" class="ghost" type="button">Edit rider</button>
             <button id="btnAccount" class="ghost" type="button">Account · Wallet</button>
           </div>
-          <p class="note" id="titleNote">Press Enter to start. M mutes.</p>
+          <p class="note" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.3</p>
           <div class="initials" id="loginBox" hidden>
             <h3>SIGN IN · PICK YOUR USERNAME</h3>
             <span class="note">3 to 12 letters, numbers or _. Nobody else can have it, and every high score you set goes under it.</span>
@@ -730,6 +730,11 @@ const WalletAuth = (() => {
 })();
 const shortAddr = a => a ? a.slice(0, 6) + '...' + a.slice(-4) : '';
 /* ============ server backend (Supabase): dormant until SPC_CONFIG has a URL and anon key ============ */
+const BUILD = '80.3';
+(function(){ try { if(!/^https?:/.test(location.protocol) || location.hostname.endsWith('claude.ai') || location.hostname.endsWith('claudeusercontent.com')) return;
+  fetch('version.txt?t=' + Date.now(), {cache:'no-store'}).then(r => r.ok ? r.text() : '').then(v => { v = (v || '').trim(); if(!v || v === BUILD) return;
+    let k = ''; try { k = sessionStorage.getItem('spc_rl'); } catch(e) {} if(k === v) return; try { sessionStorage.setItem('spc_rl', v); } catch(e) {}
+    fetch(location.pathname, {cache:'reload'}).catch(() => {}).finally(() => location.reload()); }).catch(() => {}); } catch(e) {} })();
 const SPC_CONFIG = Object.assign({ supabaseUrl:'', supabaseAnonKey:'', authDomain:'', supabaseJs:'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.87.1/dist/umd/supabase.js' }, (typeof window !== 'undefined' && window.SPC_CONFIG) || {});
 const SB = {
   on:false, client:null, uid:null, email:null, wallet:null, coins:0, inv:{}, prices:{}, listings:[], loading:false, err:'',
@@ -810,7 +815,7 @@ const SB = {
     return new Promise((res, rej) => {
       const ch = sb.channel(name, {config:{broadcast:{self:true}, presence:{key}}});
       const ls = {}, pl = [], fast = {}; let slow = {}, myFast = {}, peers = [], pend = false, done = false;
-      const track = () => { const gap = Date.now() - lastTrack; if(gap < 4000){ if(!trackT) trackT = setTimeout(() => { trackT = 0; track(); }, 4000 - gap); return; } lastTrack = Date.now(); ch.track({p:slow, uid:self.uid}).catch(() => {}); };
+      const track = () => { const gap = Date.now() - lastTrack; if(gap < 10000){ if(!trackT) trackT = setTimeout(() => { trackT = 0; track(); }, 10000 - gap); return; } lastTrack = Date.now(); ch.track({p:slow, uid:self.uid}).catch(() => {}); };
       const wave = () => { if(waveT) return; waveT = setTimeout(() => { waveT = 0; if(Object.keys(myFast).length) ch.send({type:'broadcast', event:'pz', payload:{from:key, p:myFast}}).catch(() => {}); }, 150); };
       const me = () => ({peer:key, by:self.uid, isMe:true, sameTab:true, kind:'viewer', guest:false, presence:{...slow, ...myFast}, updatedAt:Date.now()});
       const build = () => { const st = ch.presenceState(); const out = [];
@@ -836,7 +841,7 @@ const SB = {
         leave(){ return sb.removeChannel(ch).then(() => {}).catch(() => {}); }
       };
       // v80: after a dropped connection the channel rejoins on its own; put us back in it
-      ch.subscribe(status => { if(status === 'SUBSCRIBED'){ api.dead = false; track(); if(!done){ done = true; res(api); } else wave(); }
+      ch.subscribe((status, err) => { try { console.info('[realtime]', name, status, err ? String(err.message || err) : ''); } catch(e) {} if(status === 'SUBSCRIBED'){ api.dead = false; track(); if(!done){ done = true; res(api); } else wave(); }
         else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){ if(!done){ done = true; rej(new Error(status)); } else api.dead = true; } });
     });
   },
@@ -5766,7 +5771,7 @@ function cityPresence(clear){
   CITY.sentAt = now; CITY.last = key; CITY.on = true; CITY.room.presence({cy:st}).catch(() => {});
 }
 function cityTick(dt){
-  if(CITY.room && CITY.room.dead && !CITY.room.left){ const r0 = CITY.room; r0.left = true; CITY.room = null; CITY.peers.clear(); CITY.on = false; CITY.last = ''; for(const u of CITY.unsub) try { u(); } catch(e) {} CITY.unsub = []; try { r0.leave(); } catch(e) {} CITY.retry = performance.now() + 3000; }
+  if(CITY.room && CITY.room.dead && !CITY.room.left){ const r0 = CITY.room; r0.left = true; CITY.room = null; CITY.peers.clear(); CITY.on = false; CITY.last = ''; for(const u of CITY.unsub) try { u(); } catch(e) {} CITY.unsub = []; try { r0.leave(); } catch(e) {} CITY.retry = performance.now() + 10000; console.warn('[city] connection closed, rejoining in 10s'); }
   if(!CITY.retry || performance.now() > CITY.retry) cityJoin(); chatTick(dt); if(!CITY.room) return; pvpHooks(); chatHooks();
   cityPresence(false);
   const seen = new Set();
@@ -5785,6 +5790,7 @@ function cityDraw(cx, cy, ents){
 function cityNames(cx, cy){
   for(const o of CITY.peers.values()){ const X = o.x - cx, Y = o.y - cy; if(X < -24 || X > W + 24 || Y < -40 || Y > H + 30) continue; T(o.n, X, Y - 30, 4, o.c ? '#ff8a8a' : '#33e0ff', 'center'); }
   if(CITY.room && CITY.peers.size) T('RIDERS IN CITY ' + CITY.inst + ': ' + (CITY.peers.size + 1), W - 8, 33, 4, '#33e0ff', 'right');
+  else if(SB.on && !CITY.room) T(CITY.retry && performance.now() < CITY.retry ? 'RECONNECTING...' : 'CONNECTING...', W - 8, 33, 4, '#ff8a8a', 'right');
 }
 function cityInteractables(out){ for(const o of CITY.peers.values()) out.push({kind:'player', o, x:o.x, y:o.y, r:20, label:'CHALLENGE ' + o.n}); }
 function cityChallenge(o){
