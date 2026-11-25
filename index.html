@@ -243,7 +243,7 @@ body.tablet #tPause,body.tablet #tChat,body.tablet #tMap{transform:none}
             <button id="btnEdit" class="ghost" type="button">Edit rider</button>
             <button id="btnAccount" class="ghost" type="button">Account · Wallet</button>
           </div>
-          <p class="note" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.3</p>
+          <p class="note kbonly" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.4</p>
           <div class="initials" id="loginBox" hidden>
             <h3>SIGN IN · PICK YOUR USERNAME</h3>
             <span class="note">3 to 12 letters, numbers or _. Nobody else can have it, and every high score you set goes under it.</span>
@@ -730,7 +730,7 @@ const WalletAuth = (() => {
 })();
 const shortAddr = a => a ? a.slice(0, 6) + '...' + a.slice(-4) : '';
 /* ============ server backend (Supabase): dormant until SPC_CONFIG has a URL and anon key ============ */
-const BUILD = '80.3';
+const BUILD = '80.4';
 (function(){ try { if(!/^https?:/.test(location.protocol) || location.hostname.endsWith('claude.ai') || location.hostname.endsWith('claudeusercontent.com')) return;
   fetch('version.txt?t=' + Date.now(), {cache:'no-store'}).then(r => r.ok ? r.text() : '').then(v => { v = (v || '').trim(); if(!v || v === BUILD) return;
     let k = ''; try { k = sessionStorage.getItem('spc_rl'); } catch(e) {} if(k === v) return; try { sessionStorage.setItem('spc_rl', v); } catch(e) {}
@@ -4823,7 +4823,7 @@ function npcTalk(n){
       if(owHas('earbuds')){ owGive('earbuds', -1); owSetFlag('pearl'); say(n.name, ['MY WALKMAN HEADPHONES! BLESS YOU, BABY.']); reward(40, 'LOST AND FOUND'); return; }
       owSetFlag('q4'); return say(n.name, ['I DROPPED MY WALKMAN HEADPHONES SOMEWHERE IN THIS PARK.', 'THESE EYES AIN’T WHAT THEY USED TO BE. YOU MIND LOOKING?']);
     case 'coach': return say(n.name, lvDone('tut') ? ['YOU\u2019VE GOT THE BASICS. THE BLOCK PARTY\u2019S JUST EAST, IN THE PARK ON SEDGWICK. GO SHOW THEM.'] : ['NEW AROUND HERE? THE SCHOOLYARD\u2019S RIGHT BEHIND ME.', 'RIDE THROUGH IT ONCE AND YOU\u2019LL KNOW EVERYTHING YOU NEED.']);
-    case 'gus': return say(n.name, [['HOLD BOOST (K) TO SMASH THROUGH ANYTHING IN A LEVEL.', 'THE TRAIN YARD GATE BY THE ALLEY’S CHAINED UP. YOU’D NEED BOLT CUTTERS.', 'CANS GET STASHED ALL OVER THIS CITY. LOOK FOR THE SPARKLE.', 'SAL’S BIKE SHOP SELLS LIMITED RIDES. FASTER ON THE STREET, SAME IN THE LEVELS.', 'SECURITY GUARDS WATCH THE BANK PLAZA, THE TENEMENT YARD, THE LOADING DOCKS AND THE RIVERSIDE OFFICES. BEST WALLS IN TOWN, THOUGH. ASK JOJO IN THE ALLEY.'][(w.dels + w.tags.length + w.stash.length) % 6]]);
+    case 'gus': return say(n.name, [[(phoneUI ? 'HOLD THE BOOST BUTTON' : 'HOLD BOOST (K OR SHIFT)') + ' TO SMASH THROUGH ANYTHING IN A LEVEL.', 'THE TRAIN YARD GATE BY THE ALLEY’S CHAINED UP. YOU’D NEED BOLT CUTTERS.', 'CANS GET STASHED ALL OVER THIS CITY. LOOK FOR THE SPARKLE.', 'SAL’S BIKE SHOP SELLS LIMITED RIDES. FASTER ON THE STREET, SAME IN THE LEVELS.', 'SECURITY GUARDS WATCH THE BANK PLAZA, THE TENEMENT YARD, THE LOADING DOCKS AND THE RIVERSIDE OFFICES. BEST WALLS IN TOWN, THOUGH. ASK JOJO IN THE ALLEY.'][(w.dels + w.tags.length + w.stash.length) % 6]]);
     case 'jojo': if(!W0RLD().f.firstPaint) return say(n.name, ['YOU WRITE? EVERY WALL WORTH HITTING IS ON PRIVATE PROPERTY. THAT\u2019S THE POINT.', 'RIDE UP TO ONE, HOLD ' + (phoneUI ? 'A' : 'E') + ' AND DON\u2019T MOVE TILL IT\u2019S UP. IT PAYS YOU CRED EVERY HOUR IT LASTS.', 'YOU START WITH A TAG. COME IN THE SHOP FOR BIGGER STUFF.'], null, jojoShop); return jojoShop();
     case 'kenji': return say(n.name, ['RACE ME. ROUND THE BLOCK, FOLLOW THE RINGS.' + (w.ch.race ? ' YOUR BEST: ' + w.ch.race.toFixed(1) + 's.' : '')], [{t:'RACE', fn:() => wagerAsk(n.name, startRace)}, {t:'VIEW TIMES', fn:() => say(n.name + ' · TOP TIMES', RaceBoard.lines(RaceBoard.key()))}, {t:'NOT NOW', fn:null}]);
     case 'lola': if(!lvDone('spc')) return say(n.name, ['GO RUN THE BLOCK PARTY FIRST. THEN WE TALK SCORES.']);
