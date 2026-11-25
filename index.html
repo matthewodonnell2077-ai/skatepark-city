@@ -249,7 +249,7 @@ html,body{touch-action:manipulation}
             <button id="btnAccount" class="ghost" type="button">Account · Wallet</button>
             <button id="btnSignOut" class="ghost" type="button" hidden>Sign out</button>
           </div>
-          <p class="note kbonly" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.7</p>
+          <p class="note kbonly" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.8</p>
           <div class="initials" id="loginBox" hidden>
             <h3>SIGN IN · PICK YOUR USERNAME</h3>
             <span class="note">3 to 12 letters, numbers or _. Nobody else can have it, and every high score you set goes under it.</span>
@@ -736,7 +736,7 @@ const WalletAuth = (() => {
 })();
 const shortAddr = a => a ? a.slice(0, 6) + '...' + a.slice(-4) : '';
 /* ============ server backend (Supabase): dormant until SPC_CONFIG has a URL and anon key ============ */
-const BUILD = '80.7';
+const BUILD = '80.8';
 // iPhone ignores the no-zoom viewport setting, so pinches are blocked here (two-finger moves and Safari's gesture events)
 try { const stop = e => { e.preventDefault(); };
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, stop, {passive:false}));
@@ -6241,7 +6241,8 @@ $('btnOnBack').onclick = async () => { await onlineLeave(); runMode = 'normal'; 
 /* ============ phone edition: H.O.R.S.E. only, touch controls, pass-and-play ============ */
 const PHONE = (() => { let h = ''; try { h = location.hash; } catch(e) {}
   if(h === '#phone') return true; if(h === '#full') return false;
-  try { const pref = localStorage.getItem('spc_touch'); if(pref === '1') return true; if(pref === '0') return false; } catch(e) {}
+  // v80: the touch controls toggle is gone, so an old saved 'off' can't strand a phone without its buttons
+  try { localStorage.removeItem('spc_touch'); } catch(e) {}
   try { const ua = navigator.userAgent || '', small = Math.min(screen.width, screen.height) < 520, coarse = matchMedia('(pointer:coarse)').matches, fine = matchMedia('(any-pointer:fine)').matches;
     // iPads report themselves as a Mac: a "Mac" with a touch screen is an iPad
     const ipad = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
