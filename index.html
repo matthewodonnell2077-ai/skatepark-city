@@ -240,15 +240,16 @@ html,body{touch-action:manipulation}
           <p>Ride the city, land tricks to fill your boost and hang on to your spray cans. Talk to the locals, run their errands and take on street challenges to open up new spots.</p>
           <div class="btns">
             <button id="btnRide" type="button">Ride</button>
-            <button id="btnTouch" class="ghost" type="button">Touch controls</button>
+            <button id="btnTouch" class="ghost" type="button" hidden>Touch controls</button>
             <button id="btnStartOver" class="ghost" type="button">Start over</button>
-            <button id="btnOnline" type="button">Online</button>
+            <button id="btnOnline" class="ghost" type="button">Lobby</button>
             <button id="btnPass" class="ghost" type="button">Pass-and-play</button>
             <button id="btnScreen" class="ghost" type="button" hidden>Full screen</button>
             <button id="btnEdit" class="ghost" type="button">Edit rider</button>
             <button id="btnAccount" class="ghost" type="button">Account · Wallet</button>
+            <button id="btnSignOut" class="ghost" type="button" hidden>Sign out</button>
           </div>
-          <p class="note kbonly" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.6</p>
+          <p class="note kbonly" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.7</p>
           <div class="initials" id="loginBox" hidden>
             <h3>SIGN IN · PICK YOUR USERNAME</h3>
             <span class="note">3 to 12 letters, numbers or _. Nobody else can have it, and every high score you set goes under it.</span>
@@ -735,7 +736,7 @@ const WalletAuth = (() => {
 })();
 const shortAddr = a => a ? a.slice(0, 6) + '...' + a.slice(-4) : '';
 /* ============ server backend (Supabase): dormant until SPC_CONFIG has a URL and anon key ============ */
-const BUILD = '80.6';
+const BUILD = '80.7';
 // iPhone ignores the no-zoom viewport setting, so pinches are blocked here (two-finger moves and Safari's gesture events)
 try { const stop = e => { e.preventDefault(); };
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, stop, {passive:false}));
@@ -768,6 +769,7 @@ const SB = {
     const u = s && s.user; const was = this.uid; this.uid = u ? u.id : null; this.email = u ? (u.email || null) : null;
     this.wallet = u && u.user_metadata && (u.user_metadata.address || u.user_metadata.wallet_address) || null;
     if(this.uid && this.uid !== was){ await this.loadAccount(); try { Crew.load(true); } catch(e) {} }
+    try { renderAccountEntry(); } catch(e) {}
     if(!this.uid){ this.coins = 0; this.inv = {}; try { if(Crew.me){ Crew.me = null; Crew.log = []; } } catch(e) {} }
     if(this.uid && u.app_metadata && u.app_metadata.provider === 'web3'){ const a = this.web3Address(u); if(a){ this.wallet = a; this.rpc('link_wallet', {p_address:a}).catch(() => {}); } }
     MKT.status = this.uid ? '' : 'Sign in from the Account screen to trade. Coins earned while signed out stay on this device.';
@@ -5546,7 +5548,7 @@ $('btnRide').onclick = () => { audio.unlock(); if(SB.on){ if(!SB.live()){ acThen
 let acThen = false; // signing in from Start carries on into the game
 $('btnLogin').onclick = doLogin; $('btnLoginBack').onclick = () => showLogin(false);
 $('inLogin').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); doLogin(); } });
-function titleButtons(){ $('btnTouch').textContent = 'Touch controls: ' + (phoneUI ? 'on' : 'off'); const done = lvDone('tut'); $('btnRide').textContent = done ? 'Continue' : 'Start'; }
+function titleButtons(){ $('btnTouch').textContent = 'Touch controls: ' + (phoneUI ? 'on' : 'off'); renderAccountEntry(); const done = lvDone('tut'); $('btnRide').textContent = done ? 'Continue' : 'Start'; }
 // start over: wipe progress, coins, items, rides and looks (keeps your username, high scores and settings). Two taps so it can't happen by accident
 let startOverArm = 0;
 $('btnStartOver').onclick = async () => {
@@ -5599,7 +5601,11 @@ $('btnWallet').onclick = async () => {
 };
 /* ---- account screen (only shown when the game has its own server configured) ---- */
 let acBack = 'title';
-function renderAccountEntry(){}
+// v80: hosted title menu says who you are and has its own Sign out
+function renderAccountEntry(){ try { if(!SB.on) return; const inn = SB.live(), nm = SB.username || User.name;
+  $('btnAccount').textContent = inn ? 'Account · ' + (nm || 'SIGNED IN') : 'Sign in'; $('btnPhAccount').textContent = $('btnAccount').textContent; $('btnSignOut').hidden = !inn; } catch(e) {} }
+$('btnSignOut').onclick = async () => { if($('btnSignOut').dataset.sure !== '1'){ $('btnSignOut').dataset.sure = '1'; $('btnSignOut').textContent = 'Tap again to sign out'; setTimeout(() => { $('btnSignOut').dataset.sure = ''; $('btnSignOut').textContent = 'Sign out'; }, 3000); return; }
+  $('btnSignOut').dataset.sure = ''; $('btnSignOut').textContent = 'Sign out'; try { owLeave(); } catch(e) {} await SB.signOut(); SB.username = null; User.name = ''; User.where = ''; User.save(); renderAccountEntry(); sfx.blip(); };
 function openAccount(){ audio.unlock(); acBack = mode === 'phone' ? 'phone' : mode === 'rider' ? 'rider' : 'title'; $('acNote').textContent = SB.on ? '' : (SB.err || ''); setMode('account'); }
 function renderAccount(){
   if(!SB.on){ // claude.ai / offline: wallet link only; email accounts need the hosted version
