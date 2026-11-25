@@ -248,7 +248,7 @@ html,body{touch-action:manipulation}
             <button id="btnEdit" class="ghost" type="button">Edit rider</button>
             <button id="btnAccount" class="ghost" type="button">Account · Wallet</button>
           </div>
-          <p class="note kbonly" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.5</p>
+          <p class="note kbonly" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.6</p>
           <div class="initials" id="loginBox" hidden>
             <h3>SIGN IN · PICK YOUR USERNAME</h3>
             <span class="note">3 to 12 letters, numbers or _. Nobody else can have it, and every high score you set goes under it.</span>
@@ -735,7 +735,7 @@ const WalletAuth = (() => {
 })();
 const shortAddr = a => a ? a.slice(0, 6) + '...' + a.slice(-4) : '';
 /* ============ server backend (Supabase): dormant until SPC_CONFIG has a URL and anon key ============ */
-const BUILD = '80.5';
+const BUILD = '80.6';
 // iPhone ignores the no-zoom viewport setting, so pinches are blocked here (two-finger moves and Safari's gesture events)
 try { const stop = e => { e.preventDefault(); };
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, stop, {passive:false}));
@@ -5035,6 +5035,7 @@ function mapTick(dt){
   if(OW.dlg){ const d = OW.dlg, line = d.lines[d.i]; d.ch = Math.min(line.length, d.ch + dt*60);
     const last = d.i === d.lines.length - 1;
     if(last && d.choices && d.ch >= line.length){ if(E.up){ d.sel = (d.sel + d.choices.length - 1) % d.choices.length; sfx.blip(); } if(E.down){ d.sel = (d.sel + 1) % d.choices.length; sfx.blip(); } }
+    if(phoneUI && E.a2){ OW.dlg = null; sfx.blip(); return; } // v80: B backs straight out, like Esc
     if(E.confirm || E.jump || E.shop){ if(d.ch < line.length) d.ch = line.length; else if(!last){ d.i++; d.ch = 0; sfx.blip(); } else { const c = d.choices ? d.choices[d.sel] : null; OW.dlg = null; if(c && c.fn) c.fn(); else if(d.after) d.after(); } }
     return; }
   if(OW.del){ OW.del.t -= dt; if(OW.del.t <= 0){ OW.del = null; say('VINNIE', ['(ON THE PHONE) THE PIE GOT COLD. COME BACK FOR ANOTHER RUN.']); } }
@@ -5277,6 +5278,7 @@ function mapOpenTick(dt){
   const c = OW.mapCur, sp = 20*dt;
   if(OW.progOpen){ if(E.shop || E.confirm || E.jump || E.a2 || E.block || E.cmap || E.pause){ OW.progOpen = false; E.pause = false; sfx.blip(); } return; }
   // B (phone) or Shift/K: next landmark. Pad or WASD: move the crosshair anywhere
+  if(phoneUI && E.a2){ OW.mapOpen = false; sfx.blip(); return; } // phones: B closes the map (tap a place in the list to pick it)
   if(E.a2 || E.block){ const L = mapMarks(); OW.mapSel = ((OW.mapSel == null ? -1 : OW.mapSel) + (E.block ? L.length - 1 : 1)) % L.length; const m = L[OW.mapSel]; c.x = m.x; c.y = m.y; sfx.blip(); }
   c.x = Math.max(0, Math.min(OWW - 1, c.x + ((K.right ? 1 : 0) - (K.left ? 1 : 0))*sp)); c.y = Math.max(0, Math.min(OWH - 1, c.y + ((K.down ? 1 : 0) - (K.up ? 1 : 0))*sp));
   if(E.cmap || E.pause){ OW.mapOpen = false; E.pause = false; sfx.blip(); return; }
@@ -5323,7 +5325,7 @@ function cityMapHud(){
   if(!phoneUI) T(AREA_NAMES[curArea()] + ' · ' + cityPct() + '% COMPLETE', g.ox + g.mw/2, 11, 6, '#ffffff', 'center'); else T(AREA_NAMES[curArea()].replace('THE ', '') + ' ' + cityPct() + '%', 6, 11, 3.6, '#ffffff');
   for(const [n, tx, ty] of curArea() === 'queens' ? [['QUEENSBRIDGE', 22, 8], ['PHUN FACTORY', 40, 2], ['THE 7 LINE', 45, 9], ['FLUSHING MEADOWS', 68, 17], ['LEFRAK CITY', 68, 26], ['JAMAICA AVE', 30, 40], ['COLISEUM', 44, 46], ['HOLLIS', 68, 45], ['BALLFIELD', 22, 44], ['EAST RIVER', 3, 20]] : [['PROJECTS', 61, 7], ['THE TENEMENTS', 14, 18], ['THE LOTS', 40, 11], ['THE PARK', 40, 45], ['THE ALLEY', 57, 41], ['THE YARD', 57, 54], ['EAST RIVER', 76, 20], ['SCHOOLYARD', 4, 52], ['BLOCK PARTY', 20, 53], ['FIRST CITY BANK', 20, 31], ['DOCKS', 57, 32], ['OFFICES', 68, 49]]){ const [x, y] = P(tx, ty); T(n, x, y, 3.2, 'rgba(255,255,255,.8)', 'center'); }
   const bl = mapNearBlip(), [cx, cy] = P(OW.mapCur.x, OW.mapCur.y);
-  { const ly = mapListLayout(); OW.mapList = ly; fitT(phoneUI ? 'TAP A PLACE OR B: NEXT' : 'CLICK A PLACE · SHIFT / J: NEXT / BACK', 9, 23, 3.6, '#ffd23f', 'left', MAP_LIST_W - 12);
+  { const ly = mapListLayout(); OW.mapList = ly; fitT(phoneUI ? 'TAP A PLACE · B: CLOSE' : 'CLICK A PLACE · SHIFT / J: NEXT / BACK', 9, 23, 3.6, '#ffd23f', 'left', MAP_LIST_W - 12);
     ly.view.forEach((r, k) => { const y = 33 + k*ly.rh, fs = phoneUI ? 4 : 3.4;
       if(r.h){ T(r.t, 7, y, phoneUI ? 3.6 : 3.2, '#bcbcbc'); return; }
       if(r.key){ fitT(r.t, 16, y, fs, '#9a9a9a', 'left', MAP_LIST_W - 22); return; }
