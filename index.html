@@ -741,7 +741,7 @@ const SB = {
     if(!this.configured()) return false;
     try {
       if(!(window.supabase && window.supabase.createClient)) await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = SPC_CONFIG.supabaseJs; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); });
-      this.client = window.supabase.createClient(SPC_CONFIG.supabaseUrl, SPC_CONFIG.supabaseAnonKey, { realtime:{ params:{ eventsPerSecond:40 } } });
+      this.client = window.supabase.createClient(SPC_CONFIG.supabaseUrl, SPC_CONFIG.supabaseAnonKey, { realtime:{ params:{ eventsPerSecond:40 }, worker:true, heartbeatIntervalMs:15000 } });
     } catch(e){ this.err = 'Could not reach the game server.'; return false; }
     this.on = true; Backend.kind = 'supabase';
     this.client.auth.onAuthStateChange((ev, session) => { this.session(session); });
@@ -803,7 +803,7 @@ const SB = {
   /* realtime rooms: same shape as the artifact room API */
   roomRoot(){ const self = this; return { join:name => self.joinRoom(name) }; },
   joinRoom(name){
-    const self = this, sb = this.client, key = Backend.tab, FAST = {fs:1, in:1, gh:1};
+    const self = this, sb = this.client, key = Backend.tab, FAST = {fs:1, in:1, gh:1, cy:1}; let lastTrack = 0;
     return new Promise((res, rej) => {
       const ch = sb.channel(name, {config:{broadcast:{self:true}, presence:{key}}});
       const ls = {}, pl = [], fast = {}; let slow = {}, myFast = {}, peers = [], pend = false, done = false;
@@ -823,14 +823,16 @@ const SB = {
         presence(patch){ let fastP = null, slowCh = false;
           for(const k in patch){ if(FAST[k]){ fastP = fastP || {}; fastP[k] = patch[k]; if(patch[k] === null) delete myFast[k]; else myFast[k] = patch[k]; } else { slowCh = true; if(patch[k] === null) delete slow[k]; else slow[k] = patch[k]; } }
           if(fastP && !pend){ pend = true; setTimeout(() => { pend = false; ch.send({type:'broadcast', event:'pz', payload:{from:key, p:myFast}}).catch(() => {}); }, 33); }
-          if(slowCh) ch.track({p:slow, uid:self.uid}).catch(() => {});
+          if(slowCh || (fastP && Date.now() - lastTrack > 3000)){ lastTrack = Date.now(); ch.track({p:{...slow, ...myFast}, uid:self.uid}).catch(() => {}); }
           return Promise.resolve(); },
         peers(){ return peers.length ? peers : [me()]; },
         onPeers(h){ pl.push(h); setTimeout(() => h({peers:api.peers(), joined:api.peers(), left:[], updated:[]}), 0); return () => {}; },
         connected(){ return true; }, onConnection(h){ setTimeout(() => h(true), 0); return () => {}; },
         leave(){ return sb.removeChannel(ch).then(() => {}).catch(() => {}); }
       };
-      ch.subscribe(status => { if(status === 'SUBSCRIBED' && !done){ done = true; ch.track({p:slow, uid:self.uid}).catch(() => {}); res(api); } else if((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && !done){ done = true; rej(new Error(status)); } });
+      // v80: after a dropped connection the channel rejoins on its own; put us back in it
+      ch.subscribe(status => { if(status === 'SUBSCRIBED'){ lastTrack = Date.now(); ch.track({p:{...slow, ...myFast}, uid:self.uid}).catch(() => {}); if(!done){ done = true; res(api); } else ch.send({type:'broadcast', event:'pz', payload:{from:key, p:myFast}}).catch(() => {}); }
+        else if((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && !done){ done = true; rej(new Error(status)); } });
     });
   },
   /* accounts */
@@ -4944,7 +4946,7 @@ function enterMap(){
   try { if(!prog.wTrim && credNameFull().length > 5){ prog.wTrim = 1; if(prog.writer) prog.writer = prog.writer.slice(0, 5); saveProg(); setTimeout(() => toast('WRITER NAMES ARE 5 LETTERS NOW: YOU WRITE AS ' + credName() + '. CHANGE IT AT THE PAINT SHOP'), 1500); } } catch(e) {}
   { const wa = W0RLD().area || 'bronx'; if(wa !== curArea()) owSetArea(wa); }
   if(!owC) owRender();
-  const w = W0RLD(); if(!OW.loadedOnce){ OW.loadedOnce = true; const c = (AREAS[curArea()] || AREAS.bronx).centre; OW.x = px(c[0]); OW.y = px(c[1]); } else if(w.x != null && !owSolidAt(w.x, w.y)){ OW.x = w.x; OW.y = w.y; } owUnstick();
+  const w = W0RLD(); if(!OW.loadedOnce){ OW.loadedOnce = true; const c = (AREAS[curArea()] || AREAS.bronx).centre; OW.x = px(c[0]); OW.y = px(c[1]); for(let k = 0; k < 12; k++){ const x = OW.x + (Math.random()*2 - 1)*40, y = OW.y + (Math.random()*2 - 1)*24; if(!owSolidAt(x, y)){ OW.x = x; OW.y = y; break; } } } else if(w.x != null && !owSolidAt(w.x, w.y)){ OW.x = w.x; OW.y = w.y; } owUnstick();
   if(OW.bet && !CH){ toast('BET FORFEITED -' + OW.bet.stake); OW.bet = null; }
   OW.vx = OW.vy = 0; OW.dlg = null; OW.ride = true; runMode = 'normal'; CH = null; HO.cpu = false;
   for(const gd of OW_GUARDS){ gd.st = 'patrol'; gd.heat = 0; gd.i = 1; gd.x = px(gd.path[0][0]); gd.y = px(gd.path[0][1]); } OW.chased = null;
@@ -5517,7 +5519,8 @@ function showLogin(on){ const tb = $('btnRide').parentElement; tb.hidden = on; $
 async function doLogin(){ if(SB.on && !SB.live()){ showLogin(false); return openAccount(); }
   $('loginNote').textContent = 'Checking...'; const err = await User.claim($('inLogin').value); if(err){ $('loginNote').textContent = err; sfx.hurt(); return; }
   sfx.cp(); showLogin(false); rideIn(); }
-$('btnRide').onclick = () => { audio.unlock(); if(!User.name) return showLogin(true); rideIn(); };
+$('btnRide').onclick = () => { audio.unlock(); if(SB.on){ if(!SB.live()){ acThen = true; return openAccount(); } if(!User.name && SB.username){ User.name = SB.username; User.where = 'server'; User.save(); } } if(!User.name) return showLogin(true); rideIn(); };
+let acThen = false; // signing in from Start carries on into the game
 $('btnLogin').onclick = doLogin; $('btnLoginBack').onclick = () => showLogin(false);
 $('inLogin').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); doLogin(); } });
 function titleButtons(){ $('btnTouch').textContent = 'Touch controls: ' + (phoneUI ? 'on' : 'off'); const done = lvDone('tut'); $('btnRide').textContent = done ? 'Continue' : 'Start'; }
@@ -5595,7 +5598,7 @@ function renderAccount(){
 }
 $('btnAccount').onclick = openAccount;
 $('btnPhAccount').onclick = openAccount;
-$('btnAcBack').onclick = () => setMode(acBack);
+$('btnAcBack').onclick = () => { acThen = false; setMode(acBack); };
 $('btnAcEmail').onclick = async () => { const em = String($('acEmail').value || '').trim();
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ $('acNote').textContent = 'Enter a valid email address.'; sfx.hurt(); return; }
   $('btnAcEmail').disabled = true; $('acNote').textContent = 'Sending...';
@@ -5617,7 +5620,10 @@ const acCreds = () => { const nm = User.clean($('acUser').value), pw = String($(
   if(pw.length < 8){ $('acNote').textContent = 'Passwords are 8 characters or more.'; sfx.hurt(); return null; } return {nm, pw}; };
 async function acGo(make){ const c = acCreds(); if(!c) return; if(make && chatClean(c.nm) !== c.nm){ $('acNote').textContent = 'Pick something else.'; sfx.hurt(); return; }
   $('btnAcIn').disabled = $('btnAcNew').disabled = true; $('acNote').textContent = make ? 'Making your account...' : 'Signing in...';
-  try { if(make) await SB.signUpUser(c.nm, c.pw); else await SB.signInUser(c.nm, c.pw); $('acPass').value = ''; $('acNote').textContent = make ? 'Welcome, ' + c.nm + '. You’re signed in on this device.' : 'Signed in as ' + c.nm + '.'; sfx.cp(); }
+  try { if(make) await SB.signUpUser(c.nm, c.pw); else await SB.signInUser(c.nm, c.pw); $('acPass').value = ''; $('acNote').textContent = make ? 'Welcome, ' + c.nm + '. You’re signed in on this device.' : 'Signed in as ' + c.nm + '.'; sfx.cp();
+    // the username is the name: high scores, the name over your rider, everything
+    User.name = c.nm; User.where = 'server'; User.save(); if(!look.name || look.name === 'RIDER' || look.name === DEFAULT_LOOK.name){ look.name = c.nm.replace(/_/g, ' ').slice(0, 10); try { saveLook(); } catch(e2) {} }
+    if(acThen){ acThen = false; let n = 0; const go = () => { if(SB.username || ++n > 30){ setMode('title'); rideIn(); } else setTimeout(go, 100); }; setTimeout(go, 300); } }
   catch(e){ $('acNote').textContent = e.message; sfx.hurt(); }
   $('btnAcIn').disabled = $('btnAcNew').disabled = false; renderAccount(); }
 $('btnAcIn').onclick = () => acGo(false); $('btnAcNew').onclick = () => acGo(true);
@@ -5745,11 +5751,12 @@ async function cityJoin(){
     CITY.unsub.push(CITY.room.on('cyinv', m => { if(m.isMe) return; const d = m.data || {}; const me = CITY.room.peers().find(p => p.isMe); if(!me || d.to !== me.peer) return; cityInvited(d, m.peer); }));
   } finally { CITY.joining = false; }
 }
+try { document.addEventListener('visibilitychange', () => { if(!document.hidden){ CITY.last = ''; CITY.sentAt = 0; } }); } catch(e) {}
 function cityPresence(clear){
   if(!CITY.room) return;
   if(clear){ if(CITY.on){ CITY.on = false; CITY.room.presence({cy:null}).catch(() => {}); } return; }
   const now = performance.now(); if(now - CITY.sentAt < 120) return;
-  const st = {a:curArea(), x:Math.round(OW.x), y:Math.round(OW.y), d:OW.dir, r:OW.ride ? 1 : 0, v:runVeh, w:(OW.walkT*4|0)/4, n:look.name, lk:lookCode(look), m:Math.hypot(OW.vx, OW.vy) > 8 ? 1 : 0, c:OW.chased ? 1 : 0};
+  const st = {a:curArea(), x:Math.round(OW.x), y:Math.round(OW.y), d:OW.dir, r:OW.ride ? 1 : 0, v:runVeh, w:(OW.walkT*4|0)/4, n:User.name || look.name, lk:lookCode(look), m:Math.hypot(OW.vx, OW.vy) > 8 ? 1 : 0, c:OW.chased ? 1 : 0};
   const key = JSON.stringify(st); if(key === CITY.last && now - CITY.sentAt < 2000) return;
   CITY.sentAt = now; CITY.last = key; CITY.on = true; CITY.room.presence({cy:st}).catch(() => {});
 }
@@ -5760,7 +5767,7 @@ function cityTick(dt){
   for(const p of CITY.room.peers()){ if(p.isMe || !p.presence || !p.presence.cy) continue; const c = p.presence.cy; if(typeof c.x !== 'number' || typeof c.y !== 'number' || (c.a || 'bronx') !== curArea()) continue; seen.add(p.peer);
     let o = CITY.peers.get(p.peer); if(!o){ o = {x:c.x, y:c.y}; CITY.peers.set(p.peer, o); }
     o.tx = c.x; o.ty = c.y; o.d = c.d | 0; o.r = !!c.r; o.v = RIDE_TYPES[c.v] ? c.v : 'board'; o.w = +c.w || 0; o.m = !!c.m; o.c = !!c.c; o.peer = p.peer; o.guest = !!p.guest;
-    o.n = String(c.n || 'RIDER').toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 10) || 'RIDER';
+    o.n = String(c.n || 'RIDER').toUpperCase().replace(/[^A-Z0-9_ ]/g, '').slice(0, 12) || 'RIDER';
     if(o.lkc !== c.lk){ o.lkc = c.lk; o.lk = parseLookCode(c.lk) || {...DEFAULT_LOOK}; o.rl = resolveLook(o.lk); }
     const k = Math.min(1, dt*10); if(Math.hypot(o.tx - o.x, o.ty - o.y) > 200){ o.x = o.tx; o.y = o.ty; } else { o.x += (o.tx - o.x)*k; o.y += (o.ty - o.y)*k; } }
   for(const k of [...CITY.peers.keys()]) if(!seen.has(k)) CITY.peers.delete(k);
