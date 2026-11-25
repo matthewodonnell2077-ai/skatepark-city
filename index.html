@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -160,6 +160,11 @@ body.tablet #tPause,body.tablet #tChat,body.tablet #tMap{transform:none}
 .phone button{min-height:44px}
 .phone .note{font-size:16px}
 .phone .kbonly{display:none}
+/* v80: no accidental zooming on phones. Double-tap zoom off everywhere, the game area takes every touch,
+   and text boxes stay at 16px so iPhone doesn't zoom in when you tap one */
+html,body{touch-action:manipulation}
+#cv,canvas{touch-action:none}
+@media (pointer:coarse){input,select,textarea{font-size:16px !important}}
 .phone .item p{font-size:15px}
 /* phones: menus sized for a landscape phone (about 390px tall): tighter, smaller, less text */
 .phone .overlay{padding-block:6px}
@@ -243,7 +248,7 @@ body.tablet #tPause,body.tablet #tChat,body.tablet #tMap{transform:none}
             <button id="btnEdit" class="ghost" type="button">Edit rider</button>
             <button id="btnAccount" class="ghost" type="button">Account · Wallet</button>
           </div>
-          <p class="note kbonly" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.4</p>
+          <p class="note kbonly" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.5</p>
           <div class="initials" id="loginBox" hidden>
             <h3>SIGN IN · PICK YOUR USERNAME</h3>
             <span class="note">3 to 12 letters, numbers or _. Nobody else can have it, and every high score you set goes under it.</span>
@@ -730,7 +735,13 @@ const WalletAuth = (() => {
 })();
 const shortAddr = a => a ? a.slice(0, 6) + '...' + a.slice(-4) : '';
 /* ============ server backend (Supabase): dormant until SPC_CONFIG has a URL and anon key ============ */
-const BUILD = '80.4';
+const BUILD = '80.5';
+// iPhone ignores the no-zoom viewport setting, so pinches are blocked here (two-finger moves and Safari's gesture events)
+try { const stop = e => { e.preventDefault(); };
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, stop, {passive:false}));
+  document.addEventListener('touchmove', e => { if(e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, {passive:false});
+  document.addEventListener('dblclick', stop, {passive:false});
+} catch(e) {}
 (function(){ try { if(!/^https?:/.test(location.protocol) || location.hostname.endsWith('claude.ai') || location.hostname.endsWith('claudeusercontent.com')) return;
   fetch('version.txt?t=' + Date.now(), {cache:'no-store'}).then(r => r.ok ? r.text() : '').then(v => { v = (v || '').trim(); if(!v || v === BUILD) return;
     let k = ''; try { k = sessionStorage.getItem('spc_rl'); } catch(e) {} if(k === v) return; try { sessionStorage.setItem('spc_rl', v); } catch(e) {}
