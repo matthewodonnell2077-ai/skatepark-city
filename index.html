@@ -803,10 +803,15 @@ const SB = {
   /* realtime rooms: same shape as the artifact room API */
   roomRoot(){ const self = this; return { join:name => self.joinRoom(name) }; },
   joinRoom(name){
-    const self = this, sb = this.client, key = Backend.tab, FAST = {fs:1, in:1, gh:1, cy:1}; let lastTrack = 0;
+    const self = this, sb = this.client, key = Backend.tab, FAST = {fs:1, in:1, gh:1, cy:1};
+    // presence tracking is rate limited per client (a handful of calls a minute), so it only carries the slow stuff and is spaced out.
+    // Positions go as broadcasts, re-sent whenever someone new joins so they see everyone straight away
+    let lastTrack = 0, trackT = 0, waveT = 0;
     return new Promise((res, rej) => {
       const ch = sb.channel(name, {config:{broadcast:{self:true}, presence:{key}}});
       const ls = {}, pl = [], fast = {}; let slow = {}, myFast = {}, peers = [], pend = false, done = false;
+      const track = () => { const gap = Date.now() - lastTrack; if(gap < 4000){ if(!trackT) trackT = setTimeout(() => { trackT = 0; track(); }, 4000 - gap); return; } lastTrack = Date.now(); ch.track({p:slow, uid:self.uid}).catch(() => {}); };
+      const wave = () => { if(waveT) return; waveT = setTimeout(() => { waveT = 0; if(Object.keys(myFast).length) ch.send({type:'broadcast', event:'pz', payload:{from:key, p:myFast}}).catch(() => {}); }, 150); };
       const me = () => ({peer:key, by:self.uid, isMe:true, sameTab:true, kind:'viewer', guest:false, presence:{...slow, ...myFast}, updatedAt:Date.now()});
       const build = () => { const st = ch.presenceState(); const out = [];
         for(const k of Object.keys(st)){ const metas = st[k] || [], m = metas[metas.length - 1] || {}; out.push(k === key ? me() : {peer:k, by:m.uid || null, isMe:false, sameTab:false, kind:'viewer', guest:false, presence:{...(m.p || {}), ...(fast[k] || {})}, updatedAt:Date.now()}); }
@@ -815,7 +820,7 @@ const SB = {
       ch.on('broadcast', {event:'mx'}, ({payload}) => { const m = payload || {}; for(const h of (ls[m.topic] || [])) h({topic:m.topic, data:m.data, peer:m.from, by:null, isMe:m.from === key, sameTab:m.from === key, kind:'viewer', guest:false}); });
       ch.on('broadcast', {event:'pz'}, ({payload}) => { const m = payload || {}; if(m.from === key) return; const cur = {...(fast[m.from] || {})}; for(const k in (m.p || {})){ if(m.p[k] === null) delete cur[k]; else cur[k] = m.p[k]; } fast[m.from] = cur; peers = build(); });
       ch.on('presence', {event:'sync'}, () => { const before = new Set(peers.map(p => p.peer)); const now = build(); const nowSet = new Set(now.map(p => p.peer));
-        const j = now.filter(p => !before.has(p.peer)), l = [...before].filter(k => !nowSet.has(k)).map(k => ({peer:k})); for(const k of l) delete fast[k.peer]; fire(j, l); });
+        const j = now.filter(p => !before.has(p.peer)), l = [...before].filter(k => !nowSet.has(k)).map(k => ({peer:k})); for(const k of l) delete fast[k.peer]; if(j.some(p => !p.isMe)) wave(); fire(j, l); });
       const api = {
         name,
         emit(topic, data){ return ch.send({type:'broadcast', event:'mx', payload:{topic, data, from:key}}).then(() => {}); },
@@ -823,7 +828,7 @@ const SB = {
         presence(patch){ let fastP = null, slowCh = false;
           for(const k in patch){ if(FAST[k]){ fastP = fastP || {}; fastP[k] = patch[k]; if(patch[k] === null) delete myFast[k]; else myFast[k] = patch[k]; } else { slowCh = true; if(patch[k] === null) delete slow[k]; else slow[k] = patch[k]; } }
           if(fastP && !pend){ pend = true; setTimeout(() => { pend = false; ch.send({type:'broadcast', event:'pz', payload:{from:key, p:myFast}}).catch(() => {}); }, 33); }
-          if(slowCh || (fastP && Date.now() - lastTrack > 3000)){ lastTrack = Date.now(); ch.track({p:{...slow, ...myFast}, uid:self.uid}).catch(() => {}); }
+          if(slowCh) track();
           return Promise.resolve(); },
         peers(){ return peers.length ? peers : [me()]; },
         onPeers(h){ pl.push(h); setTimeout(() => h({peers:api.peers(), joined:api.peers(), left:[], updated:[]}), 0); return () => {}; },
@@ -831,8 +836,8 @@ const SB = {
         leave(){ return sb.removeChannel(ch).then(() => {}).catch(() => {}); }
       };
       // v80: after a dropped connection the channel rejoins on its own; put us back in it
-      ch.subscribe(status => { if(status === 'SUBSCRIBED'){ lastTrack = Date.now(); ch.track({p:{...slow, ...myFast}, uid:self.uid}).catch(() => {}); if(!done){ done = true; res(api); } else ch.send({type:'broadcast', event:'pz', payload:{from:key, p:myFast}}).catch(() => {}); }
-        else if((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && !done){ done = true; rej(new Error(status)); } });
+      ch.subscribe(status => { if(status === 'SUBSCRIBED'){ api.dead = false; track(); if(!done){ done = true; res(api); } else wave(); }
+        else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){ if(!done){ done = true; rej(new Error(status)); } else api.dead = true; } });
     });
   },
   /* accounts */
@@ -5761,7 +5766,8 @@ function cityPresence(clear){
   CITY.sentAt = now; CITY.last = key; CITY.on = true; CITY.room.presence({cy:st}).catch(() => {});
 }
 function cityTick(dt){
-  cityJoin(); chatTick(dt); if(!CITY.room) return; pvpHooks(); chatHooks();
+  if(CITY.room && CITY.room.dead && !CITY.room.left){ const r0 = CITY.room; r0.left = true; CITY.room = null; CITY.peers.clear(); CITY.on = false; CITY.last = ''; for(const u of CITY.unsub) try { u(); } catch(e) {} CITY.unsub = []; try { r0.leave(); } catch(e) {} CITY.retry = performance.now() + 3000; }
+  if(!CITY.retry || performance.now() > CITY.retry) cityJoin(); chatTick(dt); if(!CITY.room) return; pvpHooks(); chatHooks();
   cityPresence(false);
   const seen = new Set();
   for(const p of CITY.room.peers()){ if(p.isMe || !p.presence || !p.presence.cy) continue; const c = p.presence.cy; if(typeof c.x !== 'number' || typeof c.y !== 'number' || (c.a || 'bronx') !== curArea()) continue; seen.add(p.peer);
