@@ -249,7 +249,7 @@ html,body{touch-action:manipulation}
             <button id="btnAccount" class="ghost" type="button">Account · Wallet</button>
             <button id="btnSignOut" class="ghost" type="button" hidden>Sign out</button>
           </div>
-          <p class="note kbonly" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.8</p>
+          <p class="note kbonly" id="titleNote">Press Enter to start. M mutes.</p><p class="note" id="buildTag" style="opacity:.5;font-size:9px;margin-top:4px">BUILD 80.9</p>
           <div class="initials" id="loginBox" hidden>
             <h3>SIGN IN · PICK YOUR USERNAME</h3>
             <span class="note">3 to 12 letters, numbers or _. Nobody else can have it, and every high score you set goes under it.</span>
@@ -736,7 +736,7 @@ const WalletAuth = (() => {
 })();
 const shortAddr = a => a ? a.slice(0, 6) + '...' + a.slice(-4) : '';
 /* ============ server backend (Supabase): dormant until SPC_CONFIG has a URL and anon key ============ */
-const BUILD = '80.8';
+const BUILD = '80.9';
 // iPhone ignores the no-zoom viewport setting, so pinches are blocked here (two-finger moves and Safari's gesture events)
 try { const stop = e => { e.preventDefault(); };
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, stop, {passive:false}));
@@ -5766,6 +5766,11 @@ function openBike(tab){ if(tab === 'rack') return openStore('bike'); bkTab = tab
 /* ---- live city: other riders in your city instance (artifact live room on claude.ai, Supabase Realtime when hosted) ---- */
 const CITY = {room:null, joining:false, inst:0, peers:new Map(), sentAt:0, last:'', me:null, unsub:[], on:false};
 const CITY_CAP = 40;
+// v80: everyone with the game open sits in one quiet 'online' room, just to be counted. Shown on the city HUD
+const ONLINE = {room:null, joining:false, n:0, at:0};
+async function onlineCount(){ if(ONLINE.room){ if(ONLINE.room.dead){ try { ONLINE.room.leave(); } catch(e) {} ONLINE.room = null; } else { try { ONLINE.n = ONLINE.room.peers().length; } catch(e) {} return; } }
+  if(ONLINE.joining || performance.now() - ONLINE.at < 15000) return; ONLINE.joining = true; ONLINE.at = performance.now();
+  try { const r = await onlineRoot(); if(r){ ONLINE.room = await r.join('spc-online'); ONLINE.n = ONLINE.room.peers().length; } } catch(e) {} ONLINE.joining = false; }
 async function cityJoin(){
   if(CITY.room || CITY.joining) return; CITY.joining = true;
   try { const r = await onlineRoot(); if(!r) return;
@@ -5808,8 +5813,10 @@ function cityDraw(cx, cy, ents){
 }
 function cityNames(cx, cy){
   for(const o of CITY.peers.values()){ const X = o.x - cx, Y = o.y - cy; if(X < -24 || X > W + 24 || Y < -40 || Y > H + 30) continue; T(o.n, X, Y - 30, 4, o.c ? '#ff8a8a' : '#33e0ff', 'center'); }
-  if(CITY.room && CITY.peers.size) T('RIDERS IN CITY ' + CITY.inst + ': ' + (CITY.peers.size + 1), W - 8, 33, 4, '#33e0ff', 'right');
-  else if(SB.on && !CITY.room) T(CITY.retry && performance.now() < CITY.retry ? 'RECONNECTING...' : 'CONNECTING...', W - 8, 33, 4, '#ff8a8a', 'right');
+  // players online sits on the coins row, just left of COINS
+  onlineCount(); const onl = Math.max(ONLINE.n, CITY.room ? CITY.peers.size + 1 : 0), ox = W - 8 - TW('COINS ' + Wallet.balance(), 6)*.62 - 8;
+  if(onl) T('ONLINE ' + onl, ox, 12, 4, '#33e0ff', 'right');
+  else if(SB.on && !CITY.room) T(CITY.retry && performance.now() < CITY.retry ? 'RECONNECTING...' : 'CONNECTING...', ox, 12, 4, '#ff8a8a', 'right');
 }
 function cityInteractables(out){ for(const o of CITY.peers.values()) out.push({kind:'player', o, x:o.x, y:o.y, r:20, label:'CHALLENGE ' + o.n}); }
 function cityChallenge(o){
